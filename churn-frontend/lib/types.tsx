@@ -17,6 +17,19 @@ export interface PredictionResult {
   probability: number;     // 0..1
   label: string;           // "Churn" | "No churn"
   threshold: number;       // 0.53
+
+  // Explicabilidad SHAP individual (siempre presente en /predict/single).
+  base_value: number;            // log-odds promedio del modelo
+  base_probability: number;      // sigmoid(base_value)
+  fx: number;                    // log-odds final = base + suma(shap)
+  contributions: ShapContribution[];  // ordenadas por |shap| desc
+}
+
+export interface ShapContribution {
+  feature: string;
+  value: number;       // valor original del cliente (sin escalar)
+  shap_value: number;  // contribución en log-odds
+  delta_pp: number;    // impacto en puntos porcentuales (0..1)
 }
 
 export interface BatchPredictionRow extends ClientInput {

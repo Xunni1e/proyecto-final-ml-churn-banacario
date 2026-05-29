@@ -8,7 +8,14 @@ import {
   type FieldDef,
 } from "@/lib/fields";
 import { predictSingle } from "@/lib/api";
-import type { ClientInput, PredictionResult } from "@/lib/types";
+import type {
+  ClientInput,
+  PredictionResult,
+  ShapContribution,
+} from "@/lib/types";
+import WaterfallChart from "./WaterfallChart";
+
+const ACCENT = { risk: "#c44536", safe: "#5a7a3a" };
 
 export default function SinglePrediction() {
   const [values, setValues] = useState<Record<string, number>>(
@@ -37,14 +44,18 @@ export default function SinglePrediction() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
+    // Grid proporcional: form compacto a la izquierda, resultado ancho a la
+    // derecha (donde ahora también vive el waterfall).
+    <div className="grid gap-6 lg:grid-cols-[400px_1fr]">
       {/* Formulario */}
       <section className="rounded-sm border border-border bg-surface p-8">
         <header className="mb-6">
-          <h2 className="font-serif text-xl text-ink">Información del cliente</h2>
+          <h2 className="font-serif text-xl text-ink">
+            Información del cliente
+          </h2>
           <p className="mt-1 text-sm text-muted">
-            Diligencia los 8 atributos del modelo para estimar la probabilidad
-            de abandono.
+            Diligencia los 8 atributos del modelo para estimar la
+            probabilidad de abandono.
           </p>
         </header>
 
@@ -87,7 +98,7 @@ export default function SinglePrediction() {
         )}
       </section>
 
-      {/* Resultado */}
+      {/* Resultado (ahora ancho, contiene también la explicación SHAP) */}
       <ResultPanel result={result} loading={loading} />
     </div>
   );
@@ -174,7 +185,7 @@ function Field({
   );
 }
 
-/* ---------- Result panel ---------- */
+/* ---------- Result panel (ahora incluye toda la explicación SHAP) ---------- */
 
 function ResultPanel({
   result,
@@ -190,28 +201,28 @@ function ResultPanel({
       </header>
 
       {!result && !loading && (
-        <div className="flex min-h-[280px] items-center justify-center text-center">
+        <div className="flex min-h-[400px] items-center justify-center text-center">
           <p className="text-sm text-muted">
-            La predicción aparecerá tras enviar el formulario.
+            La predicción y su explicación aparecerán tras enviar el formulario.
           </p>
         </div>
       )}
 
       {loading && (
-        <div className="flex min-h-[280px] items-center justify-center text-sm text-muted">
+        <div className="flex min-h-[400px] items-center justify-center text-sm text-muted">
           Calculando predicción…
         </div>
       )}
 
-      {result && !loading && <ResultDisplay result={result} />}
+      {result && !loading && (
+        <div className="space-y-8">
+          <ResultDisplay result={result} />
+          <ExplanationSection result={result} />
+        </div>
+      )}
     </aside>
   );
 }
-
-// Mismos hex que las CSS vars --color-risk / --color-safe en globals.css.
-// Se duplican aquí porque se usan en `style={{}}` inline (las CSS vars no se
-// pueden concatenar con sufijos de alpha como `${var}15`).
-const ACCENT = { risk: "#c44536", safe: "#5a7a3a" };
 
 function ResultDisplay({ result }: { result: PredictionResult }) {
   const pct = result.probability * 100;
@@ -232,7 +243,7 @@ function ResultDisplay({ result }: { result: PredictionResult }) {
       </div>
 
       {/* Barra con marca del umbral */}
-      <div className="relative pt-5">
+      <div className="relative max-w-md pt-5">
         <div
           className="absolute top-0 -translate-x-1/2 font-mono text-[10px] text-muted"
           style={{ left: `${tPct}%` }}
@@ -256,7 +267,7 @@ function ResultDisplay({ result }: { result: PredictionResult }) {
         </div>
       </div>
 
-      {/* Etiqueta */}
+      {/* Etiqueta + recomendación */}
       <div>
         <div
           className="inline-flex items-center gap-2 rounded-sm px-3 py-1.5 text-sm font-medium"
@@ -268,7 +279,7 @@ function ResultDisplay({ result }: { result: PredictionResult }) {
           />
           {result.label}
         </div>
-        <p className="mt-3 text-xs leading-relaxed text-muted">
+        <p className="mt-3 max-w-md text-xs leading-relaxed text-muted">
           {result.churn
             ? "El modelo recomienda acción de retención sobre este cliente."
             : "Cliente con baja probabilidad de abandono. No se requiere acción."}
@@ -276,4 +287,124 @@ function ResultDisplay({ result }: { result: PredictionResult }) {
       </div>
     </div>
   );
+}
+
+/* ---------- Sección de explicación SHAP (waterfall + interpretación) ---------- */
+
+function ExplanationSection({ result }: { result: PredictionResult }) {
+  return (
+    <div className="border-t border-border pt-8">
+      <header className="mb-5">
+        <h3 className="text-[11px] uppercase tracking-[0.18em] text-muted">
+          Explicación SHAP
+        </h3>
+        <p className="mt-2 max-w-2xl text-xs leading-relaxed text-muted">
+          Contribución de cada variable en log-odds. Base{" "}
+          <span className="font-mono text-ink">
+            {result.base_value.toFixed(3)}
+          </span>{" "}
+          ({(result.base_probability * 100).toFixed(1)}% esperado sin conocer
+          al cliente) → f(x){" "}
+          <span className="font-mono text-ink">{result.fx.toFixed(3)}</span> (
+          {(result.probability * 100).toFixed(1)}% predicha).
+        </p>
+      </header>
+
+      <WaterfallChart
+        baseValue={result.base_value}
+        fx={result.fx}
+        contributions={result.contributions}
+        label={result.label}
+      />
+
+      <Interpretation contributions={result.contributions} />
+    </div>
+  );
+}
+
+/* ---------- Interpretación rápida (top 3 aumentan / reducen) ---------- */
+
+function Interpretation({
+  contributions,
+}: {
+  contributions: ShapContribution[];
+}) {
+  const aumentan = contributions.filter((c) => c.shap_value > 0).slice(0, 3);
+  const reducen = contributions.filter((c) => c.shap_value < 0).slice(0, 3);
+
+  return (
+    <div className="mt-8 grid gap-6 sm:grid-cols-2">
+      <div>
+        <h4 className="mb-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted">
+          <span
+            className="inline-block h-2 w-2"
+            style={{ background: ACCENT.risk }}
+          />
+          Aumentan el riesgo
+        </h4>
+        <ul className="space-y-2">
+          {aumentan.length === 0 && (
+            <li className="text-sm text-muted">
+              Ninguna feature aumenta el riesgo.
+            </li>
+          )}
+          {aumentan.map((c) => (
+            <ContribItem key={c.feature} c={c} sign="+" />
+          ))}
+        </ul>
+      </div>
+
+      <div>
+        <h4 className="mb-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted">
+          <span
+            className="inline-block h-2 w-2"
+            style={{ background: ACCENT.safe }}
+          />
+          Reducen el riesgo
+        </h4>
+        <ul className="space-y-2">
+          {reducen.length === 0 && (
+            <li className="text-sm text-muted">
+              Ninguna feature reduce el riesgo.
+            </li>
+          )}
+          {reducen.map((c) => (
+            <ContribItem key={c.feature} c={c} sign="" />
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function ContribItem({ c, sign }: { c: ShapContribution; sign: "+" | "" }) {
+  const ppPct = (c.delta_pp * 100).toFixed(1);
+  const ppSign = c.delta_pp >= 0 ? "+" : "";
+  const color = c.shap_value > 0 ? ACCENT.risk : ACCENT.safe;
+
+  return (
+    <li className="flex items-baseline justify-between gap-3 text-sm">
+      <div className="flex items-baseline gap-2">
+        <span className="font-mono text-ink">{c.feature}</span>
+        <span className="font-mono text-xs text-muted">
+          = {formatVal(c.value)}
+        </span>
+      </div>
+      <div className="text-right font-mono text-xs">
+        <span style={{ color }}>
+          {sign}
+          {c.shap_value.toFixed(3)}
+        </span>
+        <span className="ml-2 text-muted">
+          {ppSign}
+          {ppPct} pp
+        </span>
+      </div>
+    </li>
+  );
+}
+
+function formatVal(v: number): string {
+  if (Number.isInteger(v)) return String(v);
+  return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
