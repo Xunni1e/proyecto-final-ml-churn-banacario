@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+@theme {
+  /* Paleta cream/ink editorial */
+  --color-paper: #faf8f3;
+  --color-surface: #ffffff;
+  --color-border: #e8e3d7;
+  --color-ink: #1a1f2e;
+  --color-muted: #6b6760;
+  --color-risk: #c44536;
+  --color-safe: #5a7a3a;
+
+  /* Tipografía Plex (las variables son inyectadas por next/font) */
+  --font-sans: var(--font-plex-sans), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", monospace;
+  --font-serif: var(--font-plex-serif), Georgia, serif;
+}
+
+html,
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+/* Inputs numéricos sin los botones de flecha (estética terminal) */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* Foco accesible y consistente con la paleta */
+:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+}
