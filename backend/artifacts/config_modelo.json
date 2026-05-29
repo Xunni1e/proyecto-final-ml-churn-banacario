@@ -1,0 +1,23 @@
+{
+  "modelo": "XGBoost",
+  "umbral_optimo": 0.53,
+  "features": [
+    "age",
+    "products_number",
+    "balance",
+    "active_member",
+    "estimated_salary",
+    "credit_score",
+    "tenure",
+    "credit_card"
+  ],
+  "metrica_optima": "f1",
+  "variables_escaladas": [
+    "credit_score",
+    "age",
+    "tenure",
+    "balance",
+    "products_number",
+    "estimated_salary"
+  ]
+}
