@@ -38,8 +38,14 @@ if FEATURES_TO_SCALE is None:
         "config_modelo.json no contiene 'variables_escaladas' ni 'features_to_scale'"
     )
 
-# Explainer SHAP inicializado una sola vez (operación costosa).
-_explainer = shap.TreeExplainer(_model)
+# Lazy loading del explainer
+_explainer = None
+
+def get_explainer():
+    global _explainer
+    if _explainer is None:
+        _explainer = shap.TreeExplainer(_model)
+    return _explainer
 
 
 # ---------- Helpers ----------
@@ -71,7 +77,7 @@ def predict_single(client: dict) -> dict:
     is_churn = proba >= THRESHOLD
 
     # Explicación SHAP en log-odds
-    explanation = _explainer(df_prepared)
+    explanation = get_explainer()(df_prepared)
     sv = explanation[0]
     base_value = float(np.asarray(sv.base_values).item())
     shap_vals = np.asarray(sv.values, dtype=float)
